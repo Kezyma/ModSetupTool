@@ -2,5 +2,8 @@
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
+/obj
 /bin
 /.vs
+/.idea
+/Properties
