@@ -51,6 +51,7 @@ public partial class MainWindow : Window
         SetupSteps = JsonConvert.DeserializeObject<List<SetupStep>>(setupJson) ?? [];
         CurrentStepIx = 0;
         CurrentStep = SetupSteps[CurrentStepIx];
+        File.WriteAllText(System.IO.Path.GetFullPath(".setup_in_progress.txt"), $"Setup started at {DateTime.Now}");
     }
 
     private void NextStep() => GoToStep(CurrentStepIx + 1);
@@ -66,10 +67,15 @@ public partial class MainWindow : Window
         else
         {
             File.WriteAllText(System.IO.Path.GetFullPath(".setup_complete.txt"), $"Setup completed at {DateTime.Now}");
-
-
             Close();
         }
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        var inProgPath = System.IO.Path.GetFullPath(".setup_in_progress.txt");
+        if (File.Exists(inProgPath)) File.Delete(inProgPath);
+        base.OnClosing(e);
     }
 
     /// <summary>

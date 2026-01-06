@@ -1,0 +1,59 @@
+[
+  {
+    "ContentPath": "Demo\\Step_01.md",
+    "Actions": [
+      {
+        "StepType": "RunAsAdmin",
+        "Wait": true
+      }
+    ],
+    "SwitchStep": false,
+    "Skippable": true
+  },
+  {
+    "ContentPath": "Demo\\Step_02.md",
+    "Actions": [
+      {
+        "StepType": "RunApplication",
+        "AppPath": "Demo\\TestApplication.bat",
+        "AppArgs": "-demo",
+        "Wait": true
+      }
+    ],
+    "SwitchStep": false,
+    "Skippable": false
+  },
+  {
+    "ContentPath": "Demo\\Step_03.md",
+    "SwitchStep": true,
+    "YesActions": [
+      {
+        "StepType": "MoveToStep",
+        "StepIndex": 0,
+        "Wait": true
+      }
+    ],
+    "NoActions": [],
+    "Skippable": false
+  },
+  {
+    "ContentPath": "Demo\\Step_04.md",
+    "Actions": [
+      {
+        "StepType": "CopyFiles",
+        "FileMaps": {
+          "Demo\\DemoCopyDir\\DemoCopyFile.txt": "Demo\\CopyOutput\\DemoCopyFile.txt",
+          "Demo\\DemoCopyDir": "Demo\\CopyOutput\\DemoCopyDir"
+        },
+        "Wait": true
+      }
+    ],
+    "SwitchStep": false,
+    "Skippable": true
+  },
+  {
+    "Content": "## Setup Complete\nThe demo setup is now complete, click `Continue` to close the setup tool.",
+    "SwitchStep": false,
+    "Skippable": false
+  }
+]

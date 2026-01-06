@@ -15,15 +15,17 @@ class ModSetupTool(mobase.IPlugin):
         if setupComplete == False:
             moPath = Path(__file__).parent.parent
             setupCompletePath = moPath / ".setup_complete.txt"
-            if setupCompletePath.exists():
-                self._organiser.setPluginSetting("ModSetupTool", "setupcomplete", True)
-                os.remove(str(setupCompletePath))
-            else:
-                mowjPath = str(moPath / "ModSetup.exe")
-                CREATE_NEW_PROCESS_GROUP = 0x00000200
-                DETACHED_PROCESS = 0x00000008
-                p = Popen([mowjPath], stdin=PIPE, stdout=PIPE, stderr=PIPE, creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
-                os.system("taskkill /im ModOrganizer.exe /f")
+            setupProgressPath = moPath / ".setup_in_progress.txt"
+            if setupProgressPath.exists() == False:
+                if setupCompletePath.exists():
+                    self._organiser.setPluginSetting("ModSetupTool", "setupcomplete", True)
+                    os.remove(str(setupCompletePath))
+                else:
+                    mowjPath = str(moPath / "ModSetup.exe")
+                    CREATE_NEW_PROCESS_GROUP = 0x00000200
+                    DETACHED_PROCESS = 0x00000008
+                    p = Popen([mowjPath], stdin=PIPE, stdout=PIPE, stderr=PIPE, creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+                    os.system("taskkill /im ModOrganizer.exe /f")
         
     def author(self):
         return "Kezyma"
