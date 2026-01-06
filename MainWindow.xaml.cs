@@ -33,6 +33,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         LoadSetupSteps();
+        FixPythonProxySetting();
 
         YesButton.Click += YesButton_Click;
         NoButton.Click += NoButton_Click;
@@ -45,9 +46,39 @@ public partial class MainWindow : Window
     private void LoadSetupSteps()
     {
         var setupPath = System.IO.Path.GetFullPath("setup_steps.json");
-        if (!File.Exists(setupPath))
+        if (!File.Exists(setupPath)) CreateDemoSetupSteps();
+        var setupJson = File.ReadAllText(setupPath);
+        SetupSteps = JsonConvert.DeserializeObject<List<SetupStep>>(setupJson) ?? [];
+        CurrentStepIx = 0;
+        CurrentStep = SetupSteps[CurrentStepIx];
+    }
+
+    private void NextStep() => GoToStep(CurrentStepIx + 1);
+
+    private void GoToStep(int stepIx)
+    {
+        CurrentStepIx = stepIx;
+        if (SetupSteps.Count > CurrentStepIx)
         {
-            var defaultSteps = new List<SetupStep>
+            CurrentStep = SetupSteps[CurrentStepIx];
+            RenderStep();
+        }
+        else
+        {
+            File.WriteAllText(System.IO.Path.GetFullPath(".setup_complete.txt"), $"Setup completed at {DateTime.Now}");
+
+
+            Close();
+        }
+    }
+
+    /// <summary>
+    /// Creates demonstration setup steps for the first run if no setup_steps.json is found.
+    /// </summary>
+    private void CreateDemoSetupSteps()
+    {
+        var setupPath = System.IO.Path.GetFullPath("setup_steps.json");
+        var defaultSteps = new List<SetupStep>
             {
                 new() {
                     ContentPath = "Demo\\Step_01.md",
@@ -87,56 +118,41 @@ public partial class MainWindow : Window
                     Skippable = false,
                 }
             };
-            var defaultJson = JsonConvert.SerializeObject(defaultSteps, Formatting.Indented, new JsonSerializerSettings
-            {
-                NullValueHandling = NullValueHandling.Ignore,
+        var defaultJson = JsonConvert.SerializeObject(defaultSteps, Formatting.Indented, new JsonSerializerSettings
+        {
+            NullValueHandling = NullValueHandling.Ignore,
 
-            });
-            File.WriteAllText(setupPath, defaultJson);
-
-        }
-        var setupJson = File.ReadAllText(setupPath);
-        SetupSteps = JsonConvert.DeserializeObject<List<SetupStep>>(setupJson) ?? [];
-        CurrentStepIx = 0;
-        CurrentStep = SetupSteps[CurrentStepIx];
+        });
+        File.WriteAllText(setupPath, defaultJson);
     }
 
-    private void NextStep()
+    /// <summary>
+    /// When the ModSetup.py plugin closes Mod Organizer, it marks python as having failed to run.
+    /// This triggers a popup on the next launch asking if the user wants to disable python support.
+    /// The fix is to remove the loadcheck, and remove the flag for the warning, so the user doesn't accidentally disable python.
+    /// </summary>
+    private static void FixPythonProxySetting()
     {
-        GoToStep(CurrentStepIx + 1);
-    }
+        var loadCheckPath = System.IO.Path.GetFullPath("plugin_loadcheck.tmp");
+        if (File.Exists(loadCheckPath))
+            File.Delete(loadCheckPath);
 
-    private void GoToStep(int stepIx)
-    {
-        CurrentStepIx = stepIx;
-        if (SetupSteps.Count > CurrentStepIx)
+        var moIniPath = System.IO.Path.GetFullPath("ModOrganizer.ini");
+        if (File.Exists(moIniPath))
         {
-            CurrentStep = SetupSteps[CurrentStepIx];
-            RenderStep();
-        }
-        else
-        {
-            File.WriteAllText(System.IO.Path.GetFullPath(".setup_complete.txt"), $"Setup completed at {DateTime.Now}");
-
-            var loadCheckPath = System.IO.Path.GetFullPath("plugin_loadcheck.tmp");
-            if (File.Exists(loadCheckPath))
-                File.Delete(loadCheckPath);
-
-            var moIniPath = System.IO.Path.GetFullPath("ModOrganizer.ini");
-            if (File.Exists(moIniPath))
+            var iniLines = File.ReadAllLines(moIniPath);
+            for (var i = 0; i < iniLines.Length; i++)
             {
-                var iniLines = File.ReadAllLines(moIniPath);
-                for (var i = 0; i < iniLines.Length; i++)
-                {
-                    if (iniLines[i].Contains("Python%20Proxy\\tryInit=true"))
-                        iniLines[i] = "Python%20Proxy\\tryInit=false";
-                }
-                File.WriteAllLines(moIniPath, iniLines);
+                if (iniLines[i].Contains("Python%20Proxy\\tryInit=true"))
+                    iniLines[i] = "Python%20Proxy\\tryInit=false";
             }
-            Close();
+            File.WriteAllLines(moIniPath, iniLines);
         }
     }
 
+    /// <summary>
+    /// Renders the current step markdown content, and enables the appropriate buttons.
+    /// </summary>
     private void RenderStep()
     {
         var currentStep = SetupSteps[CurrentStepIx];
@@ -162,6 +178,11 @@ public partial class MainWindow : Window
         EnableButtons();
     }
 
+    #region Buttons
+
+    /// <summary>
+    /// Enables the appropriate buttons for the current step.
+    /// </summary>
     private void EnableButtons()
     {
         var currentStep = SetupSteps[CurrentStepIx];
@@ -186,6 +207,9 @@ public partial class MainWindow : Window
         SkipButton.IsEnabled = currentStep.Skippable;
     }
 
+    /// <summary>
+    /// Disables all buttons on the page.
+    /// </summary>
     private void DisableButtons()
     {
         SkipButton.IsEnabled = false;
@@ -194,28 +218,42 @@ public partial class MainWindow : Window
         ContinueButton.IsEnabled = false;
     }
 
-    private void SkipButton_Click(object sender, RoutedEventArgs e)
-    {
-        NextStep();
-    }
+    /// <summary>
+    /// Skips the current step and moves to the next one.
+    /// </summary>
+    private void SkipButton_Click(object sender, RoutedEventArgs e) => NextStep();
 
+    /// <summary>
+    /// Execute the actions for the current step when the Continue button is clicked.
+    /// </summary>
     private void ContinueButton_Click(object sender, RoutedEventArgs e)
     {
         DisableButtons();
         ExecuteActions(CurrentStep.Actions ?? []);
     }
 
+    /// <summary>
+    /// Execute the NoActions for the current step when the No button is clicked.
+    /// </summary>
     private void NoButton_Click(object sender, RoutedEventArgs e)
     {
         DisableButtons();
         ExecuteActions(CurrentStep.NoActions ?? []);
     }
 
+    /// <summary>
+    /// Execute the YesActions for the current step when the Yes button is clicked.
+    /// </summary>
     private void YesButton_Click(object sender, RoutedEventArgs e)
     {
         DisableButtons();
         ExecuteActions(CurrentStep.YesActions ?? []);
     }
+
+    #endregion
+
+
+    #region Actions
 
     private int CurrentActionIx { get; set; } = 0;
     private List<SetupAction> CurrentActions { get; set; }
@@ -437,4 +475,6 @@ public partial class MainWindow : Window
         };
         MoveFiles_Worker.RunWorkerAsync();
     }
+
+    #endregion
 }
