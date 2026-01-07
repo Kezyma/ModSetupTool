@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
@@ -16,6 +17,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using static System.Windows.Forms.LinkLabel;
 
 namespace ModSetup;
 
@@ -58,6 +60,7 @@ public partial class MainWindow : Window
 
     private void GoToStep(int stepIx)
     {
+        Task.Run(FixPythonProxySetting);
         CurrentStepIx = stepIx;
         if (SetupSteps.Count > CurrentStepIx)
         {
@@ -139,21 +142,49 @@ public partial class MainWindow : Window
     /// </summary>
     private static void FixPythonProxySetting()
     {
-        var loadCheckPath = System.IO.Path.GetFullPath("plugin_loadcheck.tmp");
-        if (File.Exists(loadCheckPath))
-            File.Delete(loadCheckPath);
-
-        var moIniPath = System.IO.Path.GetFullPath("ModOrganizer.ini");
-        if (File.Exists(moIniPath))
+        try
         {
-            var iniLines = File.ReadAllLines(moIniPath);
-            for (var i = 0; i < iniLines.Length; i++)
-            {
-                if (iniLines[i].Contains("Python%20Proxy\\tryInit=true"))
-                    iniLines[i] = "Python%20Proxy\\tryInit=false";
-            }
-            File.WriteAllLines(moIniPath, iniLines);
+            var loadCheckPath = System.IO.Path.GetFullPath("plugin_loadcheck.tmp");
+            if (File.Exists(loadCheckPath))
+                File.Delete(loadCheckPath);
         }
+        catch (Exception)
+        {
+            // Ignore errors deleting the loadcheck file.
+        }
+
+        try
+        {
+            var moIniPath = System.IO.Path.GetFullPath("ModOrganizer.ini");
+            if (File.Exists(moIniPath))
+            {
+                var iniLines = File.ReadAllLines(moIniPath);
+                for (var i = 0; i < iniLines.Length; i++)
+                {
+                    if (iniLines[i].Contains("Python%20Proxy\\tryInit=true"))
+                        iniLines[i] = "Python%20Proxy\\tryInit=false";
+                }
+                File.WriteAllLines(moIniPath, iniLines);
+                // GrantAccess(moIniPath);
+            }
+        }
+        catch (Exception)
+        {
+            // Ignore errors modifying the INI file.
+        }
+    }
+
+    /// <summary>
+    /// Grants full control to a file path, used to make the ModOrganizer.ini editable again if it was edited as an admin.
+    /// </summary>
+    /// <param name="fullPath"></param>
+    private static void GrantAccess(string fullPath)
+    {
+        var dInfo = new DirectoryInfo(fullPath);
+        var dSecurity = dInfo.GetAccessControl();
+        dSecurity.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.WorldSid, null), FileSystemRights.FullControl, InheritanceFlags.ObjectInherit | InheritanceFlags.ContainerInherit, PropagationFlags.NoPropagateInherit, AccessControlType.Allow));
+        dInfo.SetAccessControl(dSecurity);
     }
 
     /// <summary>
@@ -273,6 +304,9 @@ public partial class MainWindow : Window
 
     private void ExecuteAction(int actionIx)
     {
+        // Small delay to allow any prior action to fully finish, just in case.
+        Thread.Sleep(1000);
+
         if (actionIx < CurrentActions.Count)
         {
             CurrentActionIx = actionIx;
@@ -375,25 +409,22 @@ public partial class MainWindow : Window
         CopyFiles_Worker.DoWork += (sender, e) =>
         {
             var fileDict = action.FileMaps ?? [];
-            foreach (var kvp in fileDict)
+            Parallel.ForEach(fileDict, kvp =>
             {
                 var srcPath = System.IO.Path.GetFullPath(kvp.Key);
                 var dstPath = System.IO.Path.GetFullPath(kvp.Value);
                 if (Directory.Exists(srcPath) || File.Exists(srcPath))
                 {
                     var fileAttr = File.GetAttributes(srcPath);
-                    if (fileAttr.HasFlag(FileAttributes.Directory))
-                    {
-                        CopyFolder(srcPath, dstPath);
-                    }
+                    if (fileAttr.HasFlag(FileAttributes.Directory)) CopyFolder(srcPath, dstPath);
                     else
                     {
-                        var destDir = System.IO.Path.GetDirectoryName(dstPath);
-                        Directory.CreateDirectory(destDir);
+                        var destPath = new FileInfo(dstPath).Directory?.FullName;
+                        Directory.CreateDirectory(destPath);
                         File.Copy(srcPath, dstPath, true);
                     }
                 }
-            }
+            });
         };
         CopyFiles_Worker.RunWorkerCompleted += (sender, e) =>
         {
@@ -407,11 +438,9 @@ public partial class MainWindow : Window
     {
         Directory.CreateDirectory(dst);
 
-        foreach (string file in Directory.GetFiles(src))
-            File.Copy(file, System.IO.Path.Combine(dst, System.IO.Path.GetFileName(file)));
+        Parallel.ForEach(Directory.GetFiles(src), file => File.Copy(file, System.IO.Path.Combine(dst, System.IO.Path.GetFileName(file)), true));
 
-        foreach (string directory in Directory.GetDirectories(src))
-            CopyFolder(directory, System.IO.Path.Combine(dst, System.IO.Path.GetFileName(directory)));
+        Parallel.ForEach(Directory.GetDirectories(src), directory => CopyFolder(directory, System.IO.Path.Combine(dst, System.IO.Path.GetFileName(directory))));
     }
 
     private BackgroundWorker MoveFiles_Worker { get; set; }
@@ -421,26 +450,23 @@ public partial class MainWindow : Window
         MoveFiles_Worker.DoWork += (sender, e) =>
         {
             var fileDict = action.FileMaps ?? [];
-            foreach (var kvp in fileDict)
+            Parallel.ForEach(fileDict, kvp =>
             {
                 var srcPath = System.IO.Path.GetFullPath(kvp.Key);
                 var dstPath = System.IO.Path.GetFullPath(kvp.Value);
                 if (Directory.Exists(srcPath) || File.Exists(srcPath))
                 {
                     var fileAttr = File.GetAttributes(srcPath);
-                    if (fileAttr.HasFlag(FileAttributes.Directory))
-                    {
-                        Directory.CreateDirectory(dstPath);
-                        Directory.Move(srcPath, dstPath);
-                    }
+                    if (fileAttr.HasFlag(FileAttributes.Directory)) MoveFolder(srcPath, dstPath);
                     else
                     {
-                        var destDir = System.IO.Path.GetDirectoryName(dstPath);
+                        var destDir = new FileInfo(dstPath).Directory?.FullName;
                         Directory.CreateDirectory(destDir);
-                        File.Move(srcPath, dstPath, true);
+                        File.Copy(srcPath, dstPath, true);
+                        DeleteFile(srcPath);
                     }
                 }
-            }
+            });
         };
         MoveFiles_Worker.RunWorkerCompleted += (sender, e) =>
         {
@@ -450,6 +476,24 @@ public partial class MainWindow : Window
         MoveFiles_Worker.RunWorkerAsync();
     }
 
+    private void MoveFolder(string src, string dst)
+    {
+        Directory.CreateDirectory(dst);
+
+        Parallel.ForEach(Directory.GetFiles(src), (file) =>
+        {
+            File.Copy(file, System.IO.Path.Combine(dst, System.IO.Path.GetFileName(file)), true);
+            DeleteFile(file);
+        });
+
+        Parallel.ForEach(Directory.GetDirectories(src), (directory) =>
+        {
+            MoveFolder(directory, System.IO.Path.Combine(dst, System.IO.Path.GetFileName(directory)));
+        });
+
+        DeleteFolder(src);
+    }
+
     private BackgroundWorker DeleteFiles_Worker { get; set; }
     private void DeleteFilesAction(SetupAction action)
     {
@@ -457,30 +501,58 @@ public partial class MainWindow : Window
         DeleteFiles_Worker.DoWork += (sender, e) =>
         {
             var fileList = action.FilePaths ?? [];
-            foreach (var file in fileList)
+            Parallel.ForEach(fileList, file =>
             {
                 var srcPath = System.IO.Path.GetFullPath(file);
                 if (Directory.Exists(srcPath) || File.Exists(srcPath))
                 {
                     var fileAttr = File.GetAttributes(srcPath);
-                    if (fileAttr.HasFlag(FileAttributes.Directory))
-                    {
-                        Directory.Delete(srcPath, true);
-                    }
-                    else
-                    {
-                        File.Delete(srcPath);
-                    }
+                    if (fileAttr.HasFlag(FileAttributes.Directory)) DeleteFolder(srcPath);
+                    else DeleteFile(srcPath);
                 }
-            }
+            });
         };
         DeleteFiles_Worker.RunWorkerCompleted += (sender, e) =>
         {
             var nextAction = CurrentActionIx + 1;
             ExecuteAction(nextAction);
         };
-        MoveFiles_Worker.RunWorkerAsync();
+        DeleteFiles_Worker.RunWorkerAsync();
     }
 
+    private static void DeleteFolder(string path, int retry = 0)
+    {
+        if (retry <= 10)
+        {
+            Thread.Sleep(1000);
+
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, true);
+            }
+            catch (Exception)
+            {
+                DeleteFolder(path, retry + 1);
+            }
+        }
+    }
+    private static void DeleteFile(string path, int retry = 0)
+    {
+        if (retry <= 10)
+        {
+            Thread.Sleep(1000);
+
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch (Exception)
+            {
+                DeleteFile(path, retry + 1);
+            }
+        }
+    }
     #endregion
 }
