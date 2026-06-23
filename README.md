@@ -1,6 +1,16 @@
-﻿# Mod Setup Tool
+![Mod Setup Tool](img/header.webp)
 
 This tool is designed to be used with Wabbajack mod lists, or any mod list setup that requires the user to perform post-setup steps themselves. It can be configured to help the user navigate these steps and perform them automatically.
+
+- [Installation](#installation)
+  - [Meta.ini](#metaini)
+- [Setup Steps](#setup-steps)
+- [Setup Actions](#setup-actions)
+  - [Run As Administrator](#run-as-administrator)
+  - [Run Application](#run-application)
+  - [Move To Step](#move-to-step)
+  - [Copy/Move/Delete Files](#copymovedelete-files)
+- [Mod Organizer Plugin](#mod-organizer-plugin)
 
 ## Installation
 
@@ -24,11 +34,13 @@ As this tool is hosted on the modding tools section of NexusMods, you will need 
 - Open Mod Organizer and navigate to the downloads list.
 - Right click the zip you added in the list, and click `Open Meta File`.
 - Add the following lines to the opened file;
-```
+
+```ini
 gameName=site
 modID=1003
 fileID=FILE_ID
 ```
+
 - To find the FILE_ID for this specific version of the download, go to the [NexusMods download page](https://www.nexusmods.com/site/mods/1003?tab=files) and find the file you are creating the meta information for.
 - Right-click the `Mod Manager Download` or `Manual Download` button, and click `Copy link address`.
 - Paste the link into notepad and look for `DownloadPopUp?id=`, the following number is the `FILE_ID` to add to the meta file.
@@ -45,7 +57,8 @@ With the meta file configured, Wabbajack will be able to automatically install t
 The `setup_steps.json` contains an array of steps, executed in order, each step can have multiple actions (or none at all) which are run when the user continues to the next step.
 
 A simple step with no actions may look something like this.
-```
+
+```json
 [
 	{
 		"ContentPath": "Path\\to\\some\\markdown.md",
@@ -75,7 +88,7 @@ All actions have two main properties.
 
 This action forces this current application to restart as an administrator, this step should usually be the first step, assuming your setup requires it.
 
-```
+```json
 {
     "ContentPath": "Path\\to\\some\\markdown.md",
     "Actions": [
@@ -93,7 +106,7 @@ This action forces this current application to restart as an administrator, this
 
 This action will launch an application with optional arguments. It can be used to run apps or scripts in the setup process. If `Wait` is enabled, it will wait for the application to close before continuing.
 
-```
+```json
 {
     "ContentPath": "Path\\to\\some\\markdown.md",
     "Actions": [
@@ -113,7 +126,7 @@ This action will launch an application with optional arguments. It can be used t
 
 This action will immediately move to a step based on the index of the step (the first step is index 0). This can be used with the `SwitchStep` to create different branches of options.
 
-```
+```json
 {
     "ContentPath": "Path\\to\\some\\markdown.md",
     "SwitchStep": true,
@@ -134,7 +147,8 @@ This action will immediately move to a step based on the index of the step (the 
 These steps allow you to copy, move, or delete files and folders. Useful when it is not worth writing a script just to move a handful of files around.
 
 For `CopyFiles` and `MoveFiles` step types, use the `FileMaps` dictionary to map source and destination. For `DeleteFiles` use the `FilePaths` array to specify files and folders to be deleted.
-```
+
+```json
 {
     "ContentPath": "Demo\\Step_04.md",
     "Actions": [
